@@ -2,8 +2,9 @@ import mysql.connector
 
 def conectar():
     return mysql.connector.connect(
-        host="localhost",
+        host="iriguchi.proxy.rlwy.net",
+        port=41069,
         user="root",
-        password="jvsb2105",
-        database="little_market"
+        password="PYqkSyHVQgcLPebywxQItXawgbWlpgur",
+        database="railway"
     )
