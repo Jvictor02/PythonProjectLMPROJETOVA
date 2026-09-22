@@ -18,11 +18,12 @@ def fmt_brl(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def encontrar_logo():
-    """Procura qualquer imagem na pasta assets"""
-    for extensao in ["png", "jpg", "jpeg"]:
-        arquivos = glob.glob(f"assets/*.{extensao}")
-        if arquivos:
-            return arquivos[0]
+    """Procura qualquer imagem na pasta assets ou na raiz"""
+    for pasta in ["assets", "."]:
+        for extensao in ["png", "jpg", "jpeg"]:
+            arquivos = glob.glob(f"{pasta}/*.{extensao}")
+            if arquivos:
+                return arquivos[0]
     return None
 
 def nome_mes(linha):
