@@ -108,130 +108,113 @@ else:
     col3.metric("📆 Média Mensal", fmt_brl(media_mensal))
     col4.metric("🏆 Melhor Mês", melhor_mes)
 
-# ---------- Análise automática do período ----------
-st.subheader("📌 Análise do período")
+# ---------- Análise automática do período selecionado ----------
+st.subheader("📌 Análise do período selecionado")
 
-if len(resumo_f) > 0:
-    fat_total = resumo_f['fat_liquido_geral'].sum()
-    gastos_total = resumo_f['gastos_total'].sum()
-    lucro_total = resumo_f['lucro_bruto'].sum()
-    margem_geral = (lucro_total / fat_total * 100) if fat_total > 0 else 0
+if not resumo_f.empty:
+    melhor_faturamento = resumo_f.loc[resumo_f[coluna_fat].idxmax()]
+    pior_faturamento   = resumo_f.loc[resumo_f[coluna_fat].idxmin()]
+    media_fat          = resumo_f[coluna_fat].mean()
+    total_fat          = resumo_f[coluna_fat].sum()
+    total_gastos       = resumo_f['gastos_total'].sum()
+    total_lucro        = resumo_f['lucro_bruto'].sum()
+    margem_media       = resumo_f['margem_liquida'].mean()
 
-    idx_max = resumo_f['fat_liquido_geral'].idxmax()
-    idx_min = resumo_f['fat_liquido_geral'].idxmin()
-    melhor = nome_mes(resumo_f.loc[idx_max])
-    pior   = nome_mes(resumo_f.loc[idx_min])
-
-    if margem_geral >= 15:
-        saude = "✅ saudável"
-    elif margem_geral >= 8:
-        saude = "⚠️ em atenção"
-    else:
-        saude = "🔴 crítica"
-
-    st.info(
-        f"No período selecionado, o faturamento líquido total foi de **{fmt_brl(fat_total)}**, "
-        f"com gastos de **{fmt_brl(gastos_total)}** e lucro líquido de **{fmt_brl(lucro_total)}**. "
-        f"A margem líquida média ficou em **{margem_geral:.1f}%**, indicando saúde financeira **{saude}**. "
-        f"O melhor mês foi **{melhor}** e o mês com menor faturamento foi **{pior}**."
-    )
+    st.markdown(f"""
+    - 📅 **Período analisado:** {resumo_f['mes_ano'].min()} a {resumo_f['mes_ano'].max()}
+    - 💰 **Faturamento total:** {fmt_brl(total_fat)}
+    - 💸 **Gastos totais:** {fmt_brl(total_gastos)}
+    - 📈 **Lucro total:** {fmt_brl(total_lucro)}
+    - 📊 **Margem média:** {margem_media:.1f}%
+    - 🏆 **Melhor mês:** {nome_mes(melhor_faturamento)} — {fmt_brl(melhor_faturamento[coluna_fat])}
+    - 📉 **Menor faturamento:** {nome_mes(pior_faturamento)} — {fmt_brl(pior_faturamento[coluna_fat])}
+    """)
 
 st.divider()
 
-# ---------- Gráfico de barras: faturamento por mês ----------
-st.subheader("📊 Faturamento por Mês e Unidade")
+# ---------- Gráfico 1: Faturamento por mês ----------
+st.subheader("📊 Faturamento Líquido por Mês")
 
-df_fat = resumo_f.copy()
-df_fat["mes_label"] = df_fat.apply(nome_mes, axis=1)
+df_plot = resumo_f.copy()
+df_plot["mes_label"] = df_plot.apply(nome_mes, axis=1)
 
 if unidade_selecionada == "Todas as unidades":
-    df_melt = df_fat[["mes_label", "fat_liquido_esmeralda", "fat_liquido_safira"]].melt(
-        id_vars="mes_label", var_name="Unidade", value_name="Faturamento Líquido"
+    df_melt = df_plot[["mes_label","fat_liquido_esmeralda","fat_liquido_safira"]].melt(
+        id_vars="mes_label", var_name="Unidade", value_name="Faturamento"
     )
     df_melt["Unidade"] = df_melt["Unidade"].map({
         "fat_liquido_esmeralda": "Esmeralda",
-        "fat_liquido_safira": "Safira"
+        "fat_liquido_safira":    "Safira"
     })
-    fig_bar = px.bar(
-        df_melt, x="mes_label", y="Faturamento Líquido", color="Unidade",
-        barmode="group",
-        color_discrete_map={"Esmeralda": VERDE_ESMERALDA, "Safira": AZUL_MARINHO},
-        labels={"mes_label": "Mês"}
-    )
+    fig1 = px.bar(df_melt, x="mes_label", y="Faturamento", color="Unidade",
+                  barmode="group",
+                  color_discrete_map={"Esmeralda": VERDE_ESMERALDA, "Safira": AZUL_MARINHO},
+                  labels={"mes_label": "Mês", "Faturamento": "R$"})
 else:
-    fig_bar = px.bar(
-        df_fat, x="mes_label", y=coluna_fat,
-        color_discrete_sequence=[VERDE_ESMERALDA],
-        labels={"mes_label": "Mês", coluna_fat: "Faturamento Líquido (R$)"}
-    )
+    fig1 = px.bar(df_plot, x="mes_label", y=coluna_fat,
+                  color_discrete_sequence=[VERDE_ESMERALDA],
+                  labels={"mes_label": "Mês", coluna_fat: "Faturamento (R$)"})
 
-fig_bar.update_layout(plot_bgcolor="white", paper_bgcolor="white")
-st.plotly_chart(fig_bar, use_container_width=True)
+fig1.update_layout(plot_bgcolor="white", paper_bgcolor="white")
+st.plotly_chart(fig1, use_container_width=True)
 
 st.divider()
 
-# ---------- Evolução do lucro ----------
-st.subheader("📈 Evolução do Lucro Líquido")
+# ---------- Gráfico 2: Lucro por mês ----------
+st.subheader("📈 Lucro Líquido por Mês")
 
-fig_lucro = px.line(
-    df_fat, x="mes_label", y="lucro_bruto",
-    markers=True,
-    color_discrete_sequence=[VERDE_ESMERALDA],
-    labels={"mes_label": "Mês", "lucro_bruto": "Lucro Líquido (R$)"}
-)
-fig_lucro.update_layout(plot_bgcolor="white", paper_bgcolor="white")
-st.plotly_chart(fig_lucro, use_container_width=True)
+fig2 = px.bar(df_plot, x="mes_label", y="lucro_bruto",
+              color="lucro_bruto",
+              color_continuous_scale=["#D64545","#f0f0f0","#189030"],
+              labels={"mes_label": "Mês", "lucro_bruto": "Lucro (R$)"})
+fig2.update_layout(plot_bgcolor="white", paper_bgcolor="white", coloraxis_showscale=False)
+st.plotly_chart(fig2, use_container_width=True)
 
 st.divider()
 
-# ---------- Evolução da margem ----------
-st.subheader("📉 Evolução da Margem Líquida (%)")
+# ---------- Gráfico 3: Margem líquida ----------
+st.subheader("📉 Margem Líquida Mensal (%)")
 
-fig_margem = px.line(
-    df_fat, x="mes_label", y="margem_liquida",
-    markers=True,
-    color_discrete_sequence=[AZUL_MARINHO],
-    labels={"mes_label": "Mês", "margem_liquida": "Margem Líquida (%)"}
-)
-fig_margem.add_hline(y=20, line_dash="dash", line_color="gray",
-                     annotation_text="Meta 20%", annotation_position="top left")
-fig_margem.update_layout(plot_bgcolor="white", paper_bgcolor="white")
-st.plotly_chart(fig_margem, use_container_width=True)
+fig3 = px.line(df_plot, x="mes_label", y="margem_liquida", markers=True,
+               color_discrete_sequence=[AZUL_MARINHO],
+               labels={"mes_label": "Mês", "margem_liquida": "Margem (%)"})
+fig3.add_hline(y=20, line_dash="dash", line_color="gray",
+               annotation_text="Meta 20%", annotation_position="top left")
+fig3.update_layout(plot_bgcolor="white", paper_bgcolor="white")
+st.plotly_chart(fig3, use_container_width=True)
 
 st.divider()
 
-# ---------- Gastos por categoria ----------
+# ---------- Gráfico 4: Distribuição de gastos ----------
 st.subheader("🧾 Distribuição de Gastos por Categoria")
 
 gastos_cat = (gastos_det_f[~gastos_det_f['categoria'].str.contains('labore', case=False, na=False)]
-              .groupby('categoria', as_index=False)['valor'].sum())
+              .groupby("categoria", as_index=False)["valor"].sum()
+              .sort_values("valor", ascending=False))
 
 if not gastos_cat.empty:
-    fig_pizza = px.pie(
-        gastos_cat, names='categoria', values='valor',
-        color_discrete_sequence=px.colors.qualitative.Set2
-    )
-    fig_pizza.update_layout(paper_bgcolor="white")
-    st.plotly_chart(fig_pizza, use_container_width=True)
+    fig4 = px.pie(gastos_cat, names="categoria", values="valor",
+                  color_discrete_sequence=px.colors.qualitative.Set2)
+    fig4.update_layout(paper_bgcolor="white")
+    st.plotly_chart(fig4, use_container_width=True)
 else:
     st.info("Sem dados de gastos detalhados para o período selecionado.")
 
 st.divider()
 
-# ---------- Tabela detalhada ----------
-st.subheader("📋 Tabela Resumo por Mês")
+# ---------- Tabela resumo ----------
+st.subheader("📋 Tabela Resumo Mensal")
 
-df_tabela = df_fat[["mes_label", "fat_liquido_esmeralda", "fat_liquido_safira",
-                     "fat_liquido_geral", "gastos_total", "lucro_bruto",
-                     "margem_liquida", "prolabore"]].copy()
+df_tabela = df_plot[["mes_label","fat_liquido_esmeralda","fat_liquido_safira",
+                      "fat_liquido_geral","gastos_total","lucro_bruto",
+                      "margem_liquida","prolabore"]].copy()
+df_tabela.columns = ["Mês","Fat. Esmeralda","Fat. Safira","Fat. Geral",
+                     "Gastos","Lucro","Margem (%)","Pró-labore (info)"]
 
-df_tabela.columns = ["Mês", "Fat. Esmeralda", "Fat. Safira", "Fat. Geral",
-                     "Gastos", "Lucro", "Margem (%)", "Pró-labore (info)"]
-
-for col in ["Fat. Esmeralda", "Fat. Safira", "Fat. Geral", "Gastos", "Lucro", "Pró-labore (info)"]:
-    df_tabela[col] = df_tabela[col].apply(fmt_brl)
-
-df_tabela["Margem (%)"] = df_tabela["Margem (%)"].apply(lambda x: f"{x:.1f}%".replace(".", ","))
+for c in ["Fat. Esmeralda","Fat. Safira","Fat. Geral","Gastos","Lucro","Pró-labore (info)"]:
+    df_tabela[c] = df_tabela[c].apply(fmt_brl)
+df_tabela["Margem (%)"] = df_tabela["Margem (%)"].apply(
+    lambda x: f"{x:.1f}%".replace(".", ","))
 
 st.dataframe(df_tabela, use_container_width=True)
 
@@ -250,15 +233,15 @@ with st.form("form_novo_mes"):
         fat_bruto_saf  = st.number_input("Fat. Bruto Safira (R$)",      min_value=0.0, step=100.0)
         fat_liq_saf    = st.number_input("Fat. Líquido Safira (R$)",    min_value=0.0, step=100.0)
     with col_b:
-        gastos_val     = st.number_input("Gastos Totais (R$)",                        min_value=0.0, step=100.0)
-        prolabore_val  = st.number_input("Pró-labore (retirada do sócio, R$)",        min_value=0.0, step=100.0)
-        notas          = st.text_area("Observações (opcional)")
+        gastos_val    = st.number_input("Gastos Totais (R$)",                  min_value=0.0, step=100.0)
+        prolabore_val = st.number_input("Pró-labore (retirada do sócio, R$)", min_value=0.0, step=100.0)
+        notas         = st.text_area("Observações (opcional)")
 
     submitted = st.form_submit_button("💾 Salvar Mês")
 
     if submitted:
         try:
-            conn = conectar()
+            conn   = conectar()
             cursor = conn.cursor()
 
             cursor.execute("""
