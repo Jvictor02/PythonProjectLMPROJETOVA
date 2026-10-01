@@ -272,7 +272,8 @@ with st.form("novo_mes"):
     fat_esmeralda = st.number_input("Faturamento Líquido Esmeralda (R$)", min_value=0.0)
     fat_safira = st.number_input("Faturamento Líquido Safira (R$)", min_value=0.0)
     gastos = st.number_input("Gastos Totais (R$)", min_value=0.0)
-    prolabore = st.number_input("Pró-labore / Retirada do Sócio (R$)", min_value=0.0)
+    prolabore_jv = st.number_input("Pró-labore João Victor (R$)", min_value=0.0)
+    prolabore_neto = st.number_input("Pró-labore Neto (R$)", min_value=0.0)
     salvar = st.form_submit_button("💾 Salvar")
 
     if salvar:
@@ -287,7 +288,6 @@ with st.form("novo_mes"):
 
         ordem_mes = mes
         fat_total = fat_esmeralda + fat_safira
-        lucro = fat_total - gastos - prolabore
 
         conn = conectar()
         cursor = conn.cursor()
@@ -304,21 +304,37 @@ with st.form("novo_mes"):
                 (mes_ano, mes_nome, ordem_mes)
             )
             cursor.execute(
-                "INSERT INTO faturamento_mensal (mes_ano, mes_nome, unidade, valor_bruto, valor_liquido, fonte) VALUES (%s, %s, 'Esmeralda', %s, %s, 'Dashboard')",
+                """INSERT INTO faturamento_mensal (mes_ano, mes_nome, unidade, valor_bruto, valor_liquido, fonte)
+                VALUES (%s, %s, 'Esmeralda', %s, %s, 'Dashboard')
+                ON DUPLICATE KEY UPDATE
+                    valor_bruto = VALUES(valor_bruto),
+                    valor_liquido = VALUES(valor_liquido)""",
                 (mes_ano, mes_nome, fat_esmeralda, fat_esmeralda)
             )
             cursor.execute(
-                "INSERT INTO faturamento_mensal (mes_ano, mes_nome, unidade, valor_bruto, valor_liquido, fonte) VALUES (%s, %s, 'Safira', %s, %s, 'Dashboard')",
+                """INSERT INTO faturamento_mensal (mes_ano, mes_nome, unidade, valor_bruto, valor_liquido, fonte)
+                VALUES (%s, %s, 'Safira', %s, %s, 'Dashboard')
+                ON DUPLICATE KEY UPDATE
+                    valor_bruto = VALUES(valor_bruto),
+                    valor_liquido = VALUES(valor_liquido)""",
                 (mes_ano, mes_nome, fat_safira, fat_safira)
             )
             cursor.execute(
-                "INSERT INTO gastos_mensais_consolidados (mes_ano, mes_nome, valor_total, fonte) VALUES (%s, %s, %s, 'Dashboard')",
+                """INSERT INTO gastos_mensais_consolidados (mes_ano, mes_nome, valor_total, fonte)
+                VALUES (%s, %s, %s, 'Dashboard')
+                ON DUPLICATE KEY UPDATE
+                    valor_total = VALUES(valor_total)""",
                 (mes_ano, mes_nome, gastos)
             )
-            if prolabore > 0:
+            if prolabore_jv > 0:
                 cursor.execute(
-                    "INSERT INTO gastos_mensais_detalhados (mes_ano, mes_nome, categoria, unidade, valor, fonte, notas) VALUES (%s, %s, 'Pró-labore', NULL, %s, 'Dashboard', 'Retirada do sócio')",
-                    (mes_ano, mes_nome, prolabore)
+                    "INSERT INTO gastos_mensais_detalhados (mes_ano, mes_nome, categoria, unidade, valor, fonte, notas) VALUES (%s, %s, 'Pró-labore João Victor', NULL, %s, 'Dashboard', 'Retirada do sócio João Victor')",
+                    (mes_ano, mes_nome, prolabore_jv)
+                )
+            if prolabore_neto > 0:
+                cursor.execute(
+                    "INSERT INTO gastos_mensais_detalhados (mes_ano, mes_nome, categoria, unidade, valor, fonte, notas) VALUES (%s, %s, 'Pró-labore Neto', NULL, %s, 'Dashboard', 'Retirada do sócio Neto')",
+                    (mes_ano, mes_nome, prolabore_neto)
                 )
             conn.commit()
             st.success(f"✅ Dados de {mes_nome} salvos com sucesso!")
@@ -326,6 +342,64 @@ with st.form("novo_mes"):
         except Exception as erro:
             conn.rollback()
             st.error(f"❌ Não foi possível salvar os dados: {erro}")
+        finally:
+            cursor.close()
+            conn.close()
+
+# ---------- Formulário de gastos detalhados ----------
+st.subheader("🧾 Inserir Gasto Detalhado")
+st.caption("Lance os gastos do mês por forma de pagamento. Cada lançamento aparece no gráfico 'Gastos por Categoria'.")
+
+with st.form("gasto_detalhado"):
+    mes_ano_gasto = st.text_input("Mês/Ano do gasto (ex: 2026-09)")
+    categoria_gasto = st.selectbox(
+        "Forma de pagamento",
+        ["Boleto", "Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro", "Outros"]
+    )
+    valor_gasto = st.number_input("Valor do gasto (R$)", min_value=0.0)
+    notas_gasto = st.text_input("Observação (opcional)")
+    salvar_gasto = st.form_submit_button("💾 Salvar Gasto")
+
+    if salvar_gasto:
+        if not re.fullmatch(r"\d{4}-\d{2}", mes_ano_gasto):
+            st.error("Digite o mês no formato AAAA-MM. Exemplo: 2026-09.")
+            st.stop()
+
+        mes_gasto = int(mes_ano_gasto[5:7])
+        if mes_gasto < 1 or mes_gasto > 12:
+            st.error("O mês deve estar entre 01 e 12.")
+            st.stop()
+
+        if valor_gasto <= 0:
+            st.error("Informe um valor maior que zero.")
+            st.stop()
+
+        nomes_meses = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+                       5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+                       9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"}
+        mes_nome_gasto = f"{nomes_meses[mes_gasto]}/{mes_ano_gasto[:4]}"
+
+        conn = conectar()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                """
+                INSERT INTO dim_mes (mes_ano, mes_nome, ordem_mes)
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE ordem_mes = VALUES(ordem_mes)
+                """,
+                (mes_ano_gasto, mes_nome_gasto, mes_gasto)
+            )
+            cursor.execute(
+                "INSERT INTO gastos_mensais_detalhados (mes_ano, mes_nome, categoria, unidade, valor, fonte, notas) VALUES (%s, %s, %s, NULL, %s, 'Dashboard', %s)",
+                (mes_ano_gasto, mes_nome_gasto, categoria_gasto, valor_gasto, notas_gasto.strip())
+            )
+            conn.commit()
+            st.success(f"✅ Gasto de {categoria_gasto} em {mes_nome_gasto} salvo! Você pode lançar o próximo.")
+        except Exception as erro:
+            conn.rollback()
+            st.error(f"❌ Não foi possível salvar o gasto: {erro}")
         finally:
             cursor.close()
             conn.close()
